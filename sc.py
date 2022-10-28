@@ -15,16 +15,30 @@ import glob
 from difflib import SequenceMatcher
 # import socks, socket
 import subprocess
+# windowsの場合
+import chromedriver_binary
+import requests
+import codecs
 
 start = time.perf_counter()
 print('start scraping')
 
-def restart_tor():
-    # socks.set_default_proxy(socks.PROXY_TYPE_SOCKS5, '127.0.0.1', 9050)
-    # socket.socket = socks.socksocket
-    # subprocess.run(["killall -HUP tor"], shell=True)
-    subprocess.run(["brew services restart tor"], shell=True)
-    time.sleep(5)
+class Tor:
+    def start_tor(self):
+        # socks.set_default_proxy(socks.PROXY_TYPE_SOCKS5, '127.0.0.1', 9050)
+        # socket.socket = socks.socksocket
+        # subprocess.run(["killall -HUP tor"], shell=True)
+        # macの場合
+        # subprocess.run(["brew services restart tor"], shell=True)
+        # windowsの場合
+        print('Tor起動中...')
+        cmd = r"C:\Users\ebieb\Desktop\scraping_latlng\tor-win32-0.4.7.10\Tor\tor.exe"
+        self.p = subprocess.Popen(cmd, shell=False)
+        time.sleep(10)
+
+    # windowsの場合
+    def kill_tor(self):
+        self.p.kill()
 
 class UrlHasChanged:
     def __init__(self, old_url):
@@ -41,7 +55,7 @@ options = Options()
 options.add_argument('--disable-gpu')
 # options.add_argument('--disable-extensions') 
 # options.add_argument('--proxy-bypass-list=*') 
-options.add_argument('--proxy-server=socks5://127.0.0.1:9150')
+options.add_argument('--proxy-server=socks5://127.0.0.1:9050')
 # options.add_argument('--lang=ja') 
 options.add_argument("--log-level=3")
 # options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -50,7 +64,7 @@ options.add_argument("--log-level=3")
 options.page_load_strategy = 'eager'
 # options.add_argument('--blink-settings=imagesEnabled=false')
 
-chrome_service = fs.Service(executable_path="./chromedriver")
+chrome_service = fs.Service(executable_path="./chromedriver.exe")
 
 df = pd.read_csv("./バス停データ/人力データ収集 - 緯度経度、バス停名.csv", header=None)
 k = 3149  # 1DataFrameあたりの行数
@@ -60,26 +74,39 @@ for i, df_i in enumerate(dfs):
     df_i.to_csv(fname)
 
 header_row = ['必要なバス停名', '取得バス停名', '緯度', '経度']
-with open('map.csv', 'w', newline="")as f:
+with codecs.open('map.csv', 'w', "utf-8")as f:
     writer = csv.writer(f)
     writer.writerow(header_row)
 f.close()
 
 i = 0
 files = glob.glob("./split_3data/*")
+tor = Tor()
 for file in files:
-    with open(file) as f:
+    with open(file, encoding="utf-8") as f:
         header = next(csv.reader(f))
         reader = csv.reader(f)
         for row in reader:
             if (i == 0):
                 if 'driver' in locals():
+                    # windowsの場合
+                    tor.kill_tor()
                     driver.close()
-                restart_tor()
+                tor.start_tor()
+                # mac
                 driver = webdriver.Chrome(service=chrome_service, options=options)
+                # windows
+                # driver = webdriver.Chrome(r".\chromedriver.exe", options=options)
                 print('-------------------------------------------------')
                 print('my ip address')
-                subprocess.run(["curl -sL --socks5 127.0.0.1:9050 https://icanhazip.com/"], shell=True)
+                # mac
+                # subprocess.run(["curl -sL --socks5 127.0.0.1:9050 https://icanhazip.com/"], shell=True)
+                # windows
+                proxies = {
+                    'https': 'socks5h://127.0.0.1:9050',
+                }
+                res = requests.get('https://icanhazip.com/', proxies=proxies)
+                print(res.text)
                 print('-------------------------------------------------')
             lat_lng = row[1]
             bas_station = row[2]
@@ -118,7 +145,7 @@ for file in files:
                 EC.visibility_of_element_located((By.CSS_SELECTOR, selector))
             )
 
-            soup = BeautifulSoup(driver.page_source, "html.parser")
+            soup = BeautifulSoup(driver.page_source.encode('utf-8'), "html.parser")
             a_tags = soup.find_all("a")
             matches = []
             for a_tag in a_tags:
@@ -145,10 +172,10 @@ for file in files:
                     replace.append(str(match_href).replace('amp;', ''))
                 
             get_data_time = 0
-            with open('map.csv', 'a', newline="")as f:
+            with codecs.open('map.csv', 'a', "utf-8")as f:
                 writer = csv.writer(f)
                 i += 1
-                if (i == 3):
+                if (i ==  50):
                     i = 0
                 if (replace == []):
                     lat_lng = lat_lng.split(',')
